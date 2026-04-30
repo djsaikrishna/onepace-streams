@@ -1,0 +1,22 @@
+{
+    "specials_01": {
+        "season": 6,
+        "title_start": "[Cover Story] ",
+        "id": "pp_BUGGYS_CREW_1"
+    },
+    "specials_02": {
+        "season": 9,
+        "title_start": "[Cover Story] ",
+        "id": "pp_COVER_KOBYMEPPO_1"
+    },
+    "specials_03": {
+        "season": 22,
+        "title_start": "[Cover Story] ",
+        "id": "pp_COVER_SHSS_1"
+    },
+    "specials_04": {
+        "season": 0,
+        "title_start": "[Fan Letter] ",
+        "id": "pp_fan_1"
+    }
+}
