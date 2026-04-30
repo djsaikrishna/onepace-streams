@@ -267,6 +267,14 @@ def main():
 
         spec_vid["season"] = target_season
 
+        # --- NEW: Assign the correct thumbnail based on the target season ---
+        if 1 <= target_season <= TOTAL_SEASONS:
+            s_padded = str(target_season).zfill(2)
+            spec_vid["thumbnail"] = f"https://images.weserv.nl/?url=cdn.jsdelivr.net/gh/6ip/onepace-assets-prm@main/public/poster-s/poster-s{s_padded}.jpg&w=1280&h=720&fit=cover&a=center"
+        else:
+            # Fallback for Season 0 or undefined seasons
+            spec_vid["thumbnail"] = "https://image.tmdb.org/t/p/w500/iN5LKyvyWUWwqbjaQfKFXoo8mch.jpg"
+
         # Find the max episode number currently existing in the target season
         episodes_in_target = [v.get("episode", 0) for v in normal_videos if v.get("season") == target_season]
         highest_ep = max(episodes_in_target) if episodes_in_target else 0
