@@ -272,13 +272,44 @@ def get_torrent_data(nyaa_url, expected_ep_num, expected_crc=None, max_retries=3
         return info_hash, torrent_filename
     return None, None
 
+# --- NEW: Global cache to track previous episode numbers ---
+LAST_EPISODE_CACHE = {}
+
 def get_expected_filename(ep_name, arc_name):
     prefix = PREFIX_MAP.get(arc_name, arc_name[:2].upper())
     ep_name_str = str(ep_name).strip()
+
+    # Initialize the tracker for this arc if it doesn't exist yet
+    if arc_name not in LAST_EPISODE_CACHE:
+        LAST_EPISODE_CACHE[arc_name] = 0
+
+    # --- Custom Override for Alternate / G-8 Episodes ---
+    if "Alternate" in ep_name_str or "(G8)" in ep_name_str:
+        match = re.search(r'\b(\d{1,3})\b', ep_name_str)
+        if match:
+            ep_num = int(match.group(1)) + 1
+        else:
+            # Fallback: Last known episode + 1
+            ep_num = LAST_EPISODE_CACHE[arc_name] + 1
+            
+        LAST_EPISODE_CACHE[arc_name] = ep_num
+        return f"{prefix}_{ep_num}.json"
+
+    # --- Standard extraction for regular episodes ---
     match = re.search(r'(\d+)\s*$', ep_name_str)
-    if not match: match = re.search(r'\b(\d{1,3})\b', ep_name_str)
-    ep_num = match.group(1) if match else "1"
-    return f"{prefix}_{str(int(ep_num))}.json"
+    if not match: 
+        match = re.search(r'\b(\d{1,3})\b', ep_name_str)
+        
+    if match:
+        ep_num = int(match.group(1))
+    else:
+        # Fallback: Last known episode + 1
+        ep_num = LAST_EPISODE_CACHE[arc_name] + 1
+    
+    # Save this episode number as the new "last seen" for this arc
+    LAST_EPISODE_CACHE[arc_name] = ep_num
+    
+    return f"{prefix}_{ep_num}.json"
 
 def save_tracker(tracker_data):
     with open(TRACKER_FILE, 'w') as f:
