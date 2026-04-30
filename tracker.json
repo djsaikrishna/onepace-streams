@@ -327,8 +327,7 @@
     "BATCH_SEARCH:Skypiea:3F695862"
   ],
   "SK_25.json": [
-    "BATCH_SEARCH:Skypiea:C951349C",
-    "BATCH_SEARCH:Skypiea:90C45C25"
+    "BATCH_SEARCH:Skypiea:C951349C"
   ],
   "LR_0.json": [
     "BATCH_SEARCH:Long Ring Long Land:E85B9E9D"
@@ -1413,5 +1412,8 @@
   ],
   "EH_20.json": [
     "BATCH_SEARCH:Egghead:B974EFD7"
+  ],
+  "SK_26.json": [
+    "BATCH_SEARCH:Skypiea:90C45C25"
   ]
 }
