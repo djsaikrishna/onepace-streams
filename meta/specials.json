@@ -18,5 +18,11 @@
         "season": 0,
         "title_start": "[Fan Letter] ",
         "id": "pp_fan_1"
+    },
+	"skypiea_g8": {
+        "season": 25,
+        "title_start": "[Alternate (G-8)] ",
+        "custom_title": "Finale",
+        "id": "pp_SK_26"
     }
 }

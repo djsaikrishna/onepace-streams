@@ -215,7 +215,7 @@ def main():
         processed_original_keys.add(orig_key)
         
         if spec_id not in found_spec_ids:
-            spec_title = key_to_title.get(orig_key, "Special Episode")
+            spec_title = spec_val.get("custom_title", key_to_title.get(orig_key, "Special Episode"))
             # Try ID, then Title fallback
             desc = descriptions_map.get(spec_id, title_to_desc.get(spec_title, ""))
             if desc:
