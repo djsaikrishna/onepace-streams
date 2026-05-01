@@ -260,6 +260,7 @@ def main():
         vid_id = spec_vid["id"]
         target_season = specials_by_id[vid_id]["season"]
         title_prefix = specials_by_id[vid_id]["title_start"]
+        custom_thumb = specials_by_id[vid_id].get("thum") # NEW: Extract the custom thumbnail if it exists
 
         original_title = spec_vid.get("title", "")
         if not original_title.startswith(title_prefix.strip()):
@@ -267,12 +268,16 @@ def main():
 
         spec_vid["season"] = target_season
 
-        # --- NEW: Assign the correct thumbnail based on the target season ---
-        if 1 <= target_season <= TOTAL_SEASONS:
+        # --- UPDATED: Thumbnail Priority Logic ---
+        if custom_thumb:
+            # Priority 1: Custom thumbnail from specials.json
+            spec_vid["thumbnail"] = custom_thumb
+        elif 1 <= target_season <= TOTAL_SEASONS:
+            # Priority 2: Season-specific poster
             s_padded = str(target_season).zfill(2)
             spec_vid["thumbnail"] = f"https://images.weserv.nl/?url=cdn.jsdelivr.net/gh/6ip/onepace-assets-prm@main/public/poster-s/poster-s{s_padded}.jpg&w=1280&h=720&fit=cover&a=center"
         else:
-            # Fallback for Season 0 or undefined seasons
+            # Priority 3: Fallback TMDB background
             spec_vid["thumbnail"] = "https://image.tmdb.org/t/p/w500/iN5LKyvyWUWwqbjaQfKFXoo8mch.jpg"
 
         # Find the max episode number currently existing in the target season
