@@ -14,7 +14,7 @@
             "Toei Animation"
         ],
         "logo": "https://cdn.jsdelivr.net/gh/6ip/onepace-assets-prm@main/public/logo_muhn.png",
-        "background": "https://image.tmdb.org/t/p/original/iN5LKyvyWUWwqbjaQfKFXoo8mch.jpg",
+        "background": "https://cdn.jsdelivr.net/gh/6ip/onepace-assets-prm@main/public/background_muhn.jpg",
         "videos": [
             {
                 "season": 17,
