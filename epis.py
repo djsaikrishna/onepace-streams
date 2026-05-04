@@ -5,7 +5,7 @@ import os
 from io import StringIO
 
 # --- Configuration ---
-OUTPUT_JSON = 'meta/pp_onepace.json'
+OUTPUT_JSON = 'meta/pp_onepacee.json'
 BASE_META_URL = "https://fedew04.github.io/OnePaceStremio/meta/series/pp_onepace.json"
 
 SHEET_ID = "1M0Aa2p5x7NioaH9-u8FyHq6rH3t5s6Sccs8GoC6pHAM"
