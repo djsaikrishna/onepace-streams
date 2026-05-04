@@ -137,6 +137,7 @@ def main():
     
     # Static Data Injection
     meta.update({
+        "id": "pp_onepacee",
         "poster": "https://cdn.jsdelivr.net/gh/6ip/onepace-assets-prm@main/public/poster.jpg",
         "background": "https://image.tmdb.org/t/p/original/iN5LKyvyWUWwqbjaQfKFXoo8mch.jpg",
         "logo": "https://cdn.jsdelivr.net/gh/6ip/onepace-assets-prm@main/public/logo.png",
