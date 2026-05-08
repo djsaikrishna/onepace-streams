@@ -59,7 +59,7 @@ def get_titles_from_properties(config_arc_map):
 
         clean_prefix = raw_prefix.lower().replace(" ", "")
         mapped_prefix = config_arc_map.get(clean_prefix, raw_prefix.upper())
-        video_id = f"pp_{mapped_prefix}_{ep_num_int}"
+        video_id = f"{mapped_prefix}_{ep_num_int}"
 
         id_to_title[video_id] = title
 
