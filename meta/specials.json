@@ -2,19 +2,19 @@
     "specials_01": {
         "season": 6,
         "title_start": "[Cover Story] ",
-        "id": "pp_BUGGYS_CREW_1",
+        "id": "BUGGYS_CREW_1",
 		"thum": "https://images.weserv.nl/?url=cdn.jsdelivr.net/gh/6ip/onepace-assets-prm@main/public/poster-s/thum-s_BUGGY.jpg&w=1280&h=720&fit=cover&a=center"
     },
     "specials_02": {
         "season": 9,
         "title_start": "[Cover Story] ",
-        "id": "pp_COVER_KOBYMEPPO_1",
+        "id": "COVER_KOBYMEPPO_1",
 		"thum": "https://images.weserv.nl/?url=cdn.jsdelivr.net/gh/6ip/onepace-assets-prm@main/public/poster-s/thum-s_KOBY.jpg&w=1280&h=720&fit=cover&a=center"
     },
     "specials_03": {
         "season": 22,
         "title_start": "[Cover Story] ",
-        "id": "pp_COVER_SHSS_1",
+        "id": "COVER_SHSS_1",
 		"thum": "https://images.weserv.nl/?url=cdn.jsdelivr.net/gh/6ip/onepace-assets-prm@main/public/poster-s/thum-s_STRAW.jpg&w=1280&h=720&fit=cover&a=center"
     },
     "specials_04": {
@@ -27,6 +27,6 @@
         "season": 14,
         "title_start": "[Alternate (G-8)] ",
         "custom_title": "Finale",
-        "id": "pp_SK_26"
+        "id": "SK_26"
     }
 }
