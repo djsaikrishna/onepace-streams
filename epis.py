@@ -139,7 +139,7 @@ def main():
     meta.update({
         "id": "pp_onepacee",
         "poster": "https://cdn.jsdelivr.net/gh/6ip/onepace-assets-prm@main/public/poster.jpg",
-        "background": "https://image.tmdb.org/t/p/original/iN5LKyvyWUWwqbjaQfKFXoo8mch.jpg",
+        "background": "https://cdn.jsdelivr.net/gh/6ip/onepace-assets-prm@main/public/background_pace.jpg",
         "logo": "https://cdn.jsdelivr.net/gh/6ip/onepace-assets-prm@main/public/logo.png",
         "description": "Experience One Piece without the filler. This manga-accurate cut removes padded scenes, saving you hundreds of hours while staying true to Oda's original vision.",
         "releaseInfo": "1999-",
