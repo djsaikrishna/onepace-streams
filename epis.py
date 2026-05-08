@@ -111,7 +111,7 @@ def main():
                 except ValueError:
                     arc_part_str = arc_part 
 
-                video_id = f"pp_{matched_prefix}_{arc_part_str}"
+                video_id = f"{matched_prefix}_{arc_part_str}"
                 descriptions_map[video_id] = desc
 
     print("3. Getting official titles from properties...")
@@ -176,7 +176,7 @@ def main():
     for video in meta.get("videos", []):
         vid_id = video.get("id", "")
         if not str(vid_id).startswith("pp_"):
-            vid_id = f"pp_{vid_id}"
+            vid_id = f"{vid_id}"
             video["id"] = vid_id
             
         # Override Title from Properties
@@ -237,7 +237,7 @@ def main():
     for prop_key in all_property_keys:
         if prop_key.startswith("specials_") and prop_key not in processed_original_keys:
             raw_prefix, raw_ep = prop_key.split("_")
-            fallback_id = f"pp_{raw_prefix.upper()}_{int(raw_ep)}"
+            fallback_id = f"{raw_prefix.upper()}_{int(raw_ep)}"
             spec_title = key_to_title[prop_key]
             
             # Fetch description strictly by exact title matching
