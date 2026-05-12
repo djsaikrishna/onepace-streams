@@ -1,4 +1,4 @@
-name: Update One Pace Meta & Subtitles
+name: Update One Pace Meta
 
 on:
   schedule:
@@ -29,15 +29,14 @@ jobs:
       - name: Run Metadata and Subtitle Scripts
         run: |
           python -u epis.py
-          python -u subs.py
 
       - name: Commit and Push changes
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           
-          # Tell git to add the json files, the new SRT folder, and the hashes memory bank!
-          git add meta/pp_onepace.json meta/subtitles.json meta/subs/ hashes.json
+          # Add all changes (JSONs, VTTs, and Hash memory)
+          git add .
           
           # Commit, pull the newest changes, and push!
           git diff --quiet && git diff --staged --quiet || (git commit -m "🤖 Auto-updated One Pace meta and subtitles" && git pull --rebase origin main && git push)
