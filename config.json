@@ -76,5 +76,12 @@
     "REV": "Reverie",
     "WA": "Wano",
     "EH": "Egghead"
-}
+  },
+  "ALIASES": {
+      "Alabasta": "Arabasta",
+      "Whisky Peak": "Whiskey Peak",
+      "Return to Sabaody": "Sabaody",
+      "The Adventures of Buggys Crew": "Buggy",
+      "The Trials of Koby-Meppo": "Koby-Meppo"
+  }
 }

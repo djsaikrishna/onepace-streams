@@ -20,10 +20,12 @@ except (FileNotFoundError, json.JSONDecodeError) as e:
     print(f"CRITICAL ERROR: Failed to load config.json. {e}")
     exit(1)
 PREFIX_MAP = CONFIG["ARC_MAP"]
+ALIASES = CONFIG.get("ALIASES", {})
 
 # Global caches to prevent spamming Nyaa
 resolved_batches_cache = {}
 nyaa_html_cache = {}
+WEBSITE_HTML_CACHE = None
 
 def download_excel_file(url, filename, max_retries=3):
     print(f"Downloading latest spreadsheet to {filename}...")
@@ -72,17 +74,9 @@ def resolve_nyaa_url(query, max_retries=2):
     return None
 
 def resolve_nyaa_batch(arc_name, max_retries=3):
-    aliases = {
-        "Alabasta": "Arabasta",
-        "Whisky Peak": "Whiskey Peak",
-        "Return to Sabaody": "Sabaody",
-        "The Adventures of Buggys Crew": "Buggy",
-        "The Trials of Koby-Meppo": "Koby-Meppo"
-    }
-    search_name = aliases.get(arc_name, arc_name)
+    search_name = ALIASES.get(arc_name, arc_name)
     clean_name = search_name.replace("The Adventures of ", "").replace("The Trials of ", "").strip()
     
-    # Search globally without forcing 1080p so we catch the older 720p/480p arcs!
     query = f"One Pace {clean_name}".replace("'", "").replace(' ', '+')
     html_url = f"https://nyaa.si/?f=0&c=0_0&q={query}"
     
@@ -92,8 +86,7 @@ def resolve_nyaa_batch(arc_name, max_retries=3):
             response.raise_for_status()
             matches = re.findall(r'<a href="(/view/\d+)" title="([^"]+)">', response.text)
             
-            best_link = None
-            best_score = -1
+            best_link, best_score = None, -1
             
             for link, title in matches:
                 if "One Pace" not in title or clean_name not in title or link.endswith("#comments"):
@@ -104,42 +97,30 @@ def resolve_nyaa_batch(arc_name, max_retries=3):
                 elif "720" in title: score += 20
                 elif "480" in title: score += 10
                 
-                # --- SMART BATCH DETECTION ---
                 is_batch = False
                 if "Batch" in title or "batch" in title.lower():
                     is_batch = True
                 elif re.search(rf'{clean_name}\s+\d{{1,3}}\s*[-~]\s*\d{{1,3}}', title, re.IGNORECASE):
-                    is_batch = True # Catches "Arabasta 01-21"
+                    is_batch = True
                 elif not re.search(rf'{clean_name}\s+\d{{1,3}}\b', title, re.IGNORECASE):
-                    is_batch = True # Catches "Arabasta [1080p]" (No isolated episode number)
+                    is_batch = True
                     
-                if is_batch:
-                    score += 100 
+                if is_batch: score += 100 
                     
                 if score > best_score:
                     best_score = score
                     best_link = f"https://nyaa.si{link}"
 
-            # CRITICAL FIX: Only return the URL if we are CERTAIN it is a batch!
             if best_link and best_score >= 100:
                 print(f"  [✅] Found Best Batch URL (Score {best_score}): {best_link}")
                 return best_link
-                
-            print(f"  [-] No batch found for {arc_name}")
             return None
         except requests.exceptions.RequestException:
             if attempt < max_retries: time.sleep(random.uniform(2, 4))
     return None
 
 def resolve_single_episode(arc_name, ep_num, max_retries=2):
-    aliases = {
-        "Alabasta": "Arabasta",
-        "Whisky Peak": "Whiskey Peak",
-        "Return to Sabaody": "Sabaody",
-        "The Adventures of Buggys Crew": "Buggy",
-        "The Trials of Koby-Meppo": "Koby-Meppo"
-    }
-    search_name = aliases.get(arc_name, arc_name)
+    search_name = ALIASES.get(arc_name, arc_name)
     clean_name = search_name.replace("The Adventures of ", "").replace("The Trials of ", "").strip()
     
     ep_padded = str(ep_num).zfill(2)
@@ -152,22 +133,14 @@ def resolve_single_episode(arc_name, ep_num, max_retries=2):
             response.raise_for_status()
             matches = re.findall(r'<a href="(/view/\d+)" title="([^"]+)">', response.text)
             
-            best_link = None
-            best_score = -1
-            
+            best_link, best_score = None, -1
             for link, title in matches:
                 if "One Pace" not in title or clean_name not in title or link.endswith("#comments"):
                     continue
-                
-                # Must contain the explicit episode number!
                 if not re.search(rf'\b{ep_padded}\b|\b{ep_num}\b', title):
                     continue
                     
-                score = 0
-                if "1080" in title: score += 30
-                elif "720" in title: score += 20
-                elif "480" in title: score += 10
-                
+                score = 30 if "1080" in title else 20 if "720" in title else 10 if "480" in title else 0
                 if score > best_score:
                     best_score = score
                     best_link = f"https://nyaa.si{link}"
@@ -312,85 +285,79 @@ def get_expected_filename(ep_name, arc_name):
     return f"{prefix}_{ep_num}.json"
 
 def save_tracker(tracker_data):
-    with open(TRACKER_FILE, 'w') as f:
-        json.dump(tracker_data, f, indent=2)
+    with open(TRACKER_FILE, 'w', encoding='utf-8') as f:
+        json.dump(tracker_data, f, indent=2, ensure_ascii=False)
 
 def resolve_from_website(arc_name, ep_num_raw, max_retries=2):   
+    global WEBSITE_HTML_CACHE
     url = "https://onepace.net/en/releases"
-    for attempt in range(1, max_retries + 1):
-        try:
-            response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=15)
-            response.raise_for_status()
-            soup = BeautifulSoup(response.text, 'html.parser')
-            
-            # Normalize names just like in the other resolve functions
-            aliases = {
-                "Alabasta": "Arabasta",
-                "Whisky Peak": "Whiskey Peak",
-                "Return to Sabaody": "Sabaody",
-                "The Adventures of Buggys Crew": "Buggy",
-                "The Trials of Koby-Meppo": "Koby-Meppo"
-            }
-            search_name = aliases.get(arc_name, arc_name)
-            clean_name = search_name.replace("The Adventures of ", "").replace("The Trials of ", "").strip().lower()
-            ep_padded = str(ep_num_raw).zfill(2)
+    search_name = ALIASES.get(arc_name, arc_name)
+    clean_name = search_name.replace("The Adventures of ", "").replace("The Trials of ", "").strip().lower()
+    
+    if not WEBSITE_HTML_CACHE:
+        for attempt in range(1, max_retries + 1):
+            try:
+                response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=15)
+                response.raise_for_status()
+                WEBSITE_HTML_CACHE = BeautifulSoup(response.text, 'html.parser')
+                break
+            except requests.exceptions.RequestException:
+                if attempt < max_retries: time.sleep(random.uniform(1, 3))
+                
+    if not WEBSITE_HTML_CACHE: return [] # Return an empty list instead of None
 
-            # All episodes are grouped in <li> tags that contain an ID
-            episodes = soup.find_all('li', id=True) 
-            
-            for ep in episodes:
-                title_tag = ep.find('h3')
-                if not title_tag: continue
+    episodes = WEBSITE_HTML_CACHE.find_all('li', id=True) 
+    found_streams = [] # Store all cuts here!
+    
+    for ep in episodes:
+        title_tag = ep.find('h3')
+        if not title_tag: continue
+        
+        title_text = title_tag.get_text(separator=" ", strip=True).lower()
+        if clean_name not in title_text: continue
+        
+        # --- NEW: Ignore Archived Episodes! ---
+        if "archived" in title_text: continue
+        
+        # Strict Episode Matching (Fixes the "5 days ago" bug)
+        match = re.search(rf'{re.escape(clean_name)}\s*(\d{{1,3}})(?:\s*-\s*(\d{{1,3}}))?', title_text)
+        if not match: continue
+        
+        ep_start = int(match.group(1))
+        ep_end = int(match.group(2)) if match.group(2) else ep_start
+        
+        if not (ep_start <= int(ep_num_raw) <= ep_end):
+            continue
+        
+        time_tag = ep.find('time')
+        if not time_tag or not time_tag.has_attr('datetime'): continue
+        
+        try:
+            release_date = datetime.datetime.strptime(time_tag['datetime'][:10], "%Y-%m-%d").date()
+            days_diff = (datetime.datetime.now().date() - release_date).days
+            if days_diff > 7 or days_diff < 0: continue 
+        except: continue
+        
+        # --- Check the <small> tag for "Extended" ---
+        small_tag = title_tag.find('small')
+        is_extended = small_tag and "extended" in small_tag.text.lower()
+        
+        magnet_tag = ep.find('a', href=re.compile(r'^magnet:\?xt='))
+        if magnet_tag:
+            match = re.search(r'urn:btih:([a-zA-Z0-9]{40})', magnet_tag['href'], re.IGNORECASE)
+            if match:
+                view_url = resolve_nyaa_url(match.group(1).lower())
+                if view_url: 
+                    found_streams.append({"url": view_url, "is_extended": is_extended})
+                    continue # Successfully found magnet, move to next ep block
+        
+        torrent_tag = ep.find('a', href=re.compile(r'nyaa\.si/download/\d+\.torrent'))
+        if torrent_tag:
+            match = re.search(r'/download/(\d+)\.torrent', torrent_tag['href'])
+            if match: 
+                found_streams.append({"url": f"https://nyaa.si/view/{match.group(1)}", "is_extended": is_extended})
                 
-                title_text = title_tag.get_text(separator=" ", strip=True).lower()
-                
-                # [FIXED] Allows matching either zero-padded (e.g., "05") or raw (e.g., "5")
-                if clean_name not in title_text:
-                    continue
-                if not re.search(rf'\b{ep_padded}\b|\b{ep_num_raw}\b', title_text):
-                    continue
-                
-                # Check if it was released within the last 7 days (1 week limit)
-                time_tag = ep.find('time')
-                if not time_tag or not time_tag.has_attr('datetime'):
-                    continue
-                
-                try:
-                    # Example format: 2026-04-22
-                    release_date = datetime.datetime.strptime(time_tag['datetime'][:10], "%Y-%m-%d").date()
-                    today = datetime.datetime.now().date()
-                    days_diff = (today - release_date).days
-                    
-                    if days_diff > 7 or days_diff < 0:
-                        continue # Older than 1 week, ignore it
-                except Exception:
-                    continue
-                
-                # --- CONDITION 1: Look for the Magnet Link ---
-                magnet_tag = ep.find('a', href=re.compile(r'^magnet:\?xt='))
-                if magnet_tag:
-                    match = re.search(r'urn:btih:([a-zA-Z0-9]{40})', magnet_tag['href'], re.IGNORECASE)
-                    if match:
-                        info_hash = match.group(1).lower()
-                        print(f"  [🌐] Fresh episode on Website (Magnet): {info_hash}")
-                        # Resolve it into a Nyaa View Link so get_torrent_data handles it smoothly
-                        view_url = resolve_nyaa_url(info_hash)
-                        if view_url: return view_url
-                
-                # --- CONDITION 2: Look for the Torrent Link ---
-                torrent_tag = ep.find('a', href=re.compile(r'nyaa\.si/download/\d+\.torrent'))
-                if torrent_tag:
-                    match = re.search(r'/download/(\d+)\.torrent', torrent_tag['href'])
-                    if match:
-                        nyaa_id = match.group(1)
-                        print(f"  [🌐] Fresh episode on Website (Torrent): {nyaa_id}")
-                        # Create the Nyaa view link 
-                        return f"https://nyaa.si/view/{nyaa_id}"
-                        
-            return None
-        except requests.exceptions.RequestException:
-            if attempt < max_retries: time.sleep(random.uniform(1, 3))
-    return None
+    return found_streams
 
 def main():
     start_time = time.time()
@@ -402,7 +369,7 @@ def main():
     
     tracker_data = {}
     if os.path.exists(TRACKER_FILE):
-        with open(TRACKER_FILE, 'r') as f:
+        with open(TRACKER_FILE, 'r', encoding='utf-8') as f:
             tracker_data = json.load(f)
             for key, val in tracker_data.items():
                 if isinstance(val, str):
@@ -455,8 +422,8 @@ def main():
                         row_lengths.append(str(val).strip())
 
             if filename not in files_to_process:
-                files_to_process[filename] = []
-                episode_lengths[filename] = {} 
+                files_to_process[filename] = {"urls": [], "arc": target_sheet} # Store arc name here
+                episode_lengths[filename] = {}
             
             row_urls = []
             for col in range(1, sheet.max_column + 1):
@@ -492,31 +459,90 @@ def main():
                     row_urls.append(f"BATCH_SEARCH:{target_sheet}:Unknown")
 
             for idx, url in enumerate(row_urls):
-                if url not in files_to_process[filename]:
-                    files_to_process[filename].append(url)
+                if url not in files_to_process[filename]["urls"]:
+                    files_to_process[filename]["urls"].append(url)
                     assigned_length = row_lengths[idx] if idx < len(row_lengths) else ""
                     episode_lengths[filename][url] = assigned_length
 
     print("\n--- Processing Streams & Saving JSONs ---")
     
-    for filename, nyaa_urls in files_to_process.items():
+    # --- REPLACE THE START OF THE PROCESSING LOOP ---
+    for filename, info in files_to_process.items():
+        nyaa_urls = info["urls"]
+        arc_name = info["arc"] # Correctly retrieve the arc for this specific file
+        
         if not nyaa_urls: continue
             
         filepath = os.path.join(output_dir, filename)
+        ep_num_raw = filename.split('_')[-1].replace('.json', '')
         
-        if tracker_data.get(filename) == nyaa_urls and os.path.exists(filepath):
+        # --- PRE-CHECK: DOES THE WEBSITE HAVE A FRESH RELEASE? ---
+        # Call it ONCE and save the list to website_streams
+        website_streams = resolve_from_website(arc_name, ep_num_raw)
+        
+        # Skip ONLY if tracker matches AND there is NO fresh website release overriding it
+        if not website_streams and tracker_data.get(filename) == nyaa_urls and os.path.exists(filepath):
             print(f"  [~] Skipped {filename} (Already up-to-date)")
             continue
             
         print(f"  [*] Processing {filename} (Found {len(nyaa_urls)} stream(s)!)")
-        ep_num_raw = filename.split('_')[-1].replace('.json', '')
         
         streams = []
-        for url in nyaa_urls:
+
+        # Extract lengths from the spreadsheet (Standard is usually index 0, Extended is index 1)
+        spreadsheet_lengths = list(episode_lengths.get(filename, {}).values())
+
+        # --- STREAM SLOTS (Prevents Old vs New Duplicates) ---
+        has_standard = False
+        has_extended = False
+
+        # --- PHASE 0: OFFICIAL WEBSITE OVERRIDE ---
+        # We already fetched website_streams above, so we just loop through it!
+        for web_stream in website_streams:
+            web_info_hash, web_filename = get_torrent_data(web_stream["url"], ep_num_raw, expected_crc=None)
+            if web_info_hash:
+                is_ext = web_stream["is_extended"]
+                ext_label = "Extended" if is_ext else "Standard"
+                print(f"  [⭐] Found fresh {ext_label} release on Website: {web_filename}")
+                
+                # Match the length based on which cut it is
+                assigned_len = ""
+                if is_ext and len(spreadsheet_lengths) > 1:
+                    assigned_len = spreadsheet_lengths[1]
+                elif not is_ext and len(spreadsheet_lengths) > 0:
+                    assigned_len = spreadsheet_lengths[0]
+
+                streams.append({
+                    "infoHash": web_info_hash, 
+                    "filename": web_filename, 
+                    "length": assigned_len
+                })
+                
+                # Lock the slot!
+                if is_ext: has_extended = True
+                else: has_standard = True
+
+        # --- PHASES 1-3: SPREADSHEET CRCs & EXTENDED CUTS ---
+        for idx, url in enumerate(nyaa_urls):
+            # idx 0 = Standard Slot, idx 1 = Extended Slot
+            is_extended_col = (idx == 1)
+
+            # If the website already filled the slot we are currently looking at, skip!
+            if is_extended_col and has_extended:
+                print("  [⚡] Skipping outdated Spreadsheet Extended Cut (already got fresh one).")
+                continue
+            if not is_extended_col and has_standard:
+                print("  [⚡] Skipping outdated Spreadsheet Standard Cut (already got fresh one).")
+                continue
+
             info_hash, torrent_filename = None, None
             actual_url = url
             expected_crc = None
             
+            if actual_url.startswith("BATCH_SEARCH:"):
+                parts = actual_url.split(":")
+                expected_crc = parts[2] if len(parts) > 2 else None
+
             # --- PHASE 1: Handle raw InfoHash queries from the spreadsheet ---
             if "nyaa.si/?q=" in actual_url:
                 match = re.search(r'\?q=([a-fA-F0-9]{40})', actual_url)
@@ -524,29 +550,20 @@ def main():
                     hash_val = match.group(1)
                     print(f"  [🔎] Resolving Spreadsheet InfoHash: {hash_val}...")
                     resolved = resolve_nyaa_url(hash_val)
-                    if resolved:
-                        actual_url = resolved
-                    else:
-                        actual_url = f"BATCH_SEARCH:{target_sheet}:Unknown" 
+                    actual_url = resolved if resolved else f"BATCH_SEARCH:{arc_name}:Unknown"
             
             # --- PHASE 2: Test Direct URLs (If it's not a batch search) ---
             if not actual_url.startswith("BATCH_SEARCH:"):
                 info_hash, torrent_filename = get_torrent_data(actual_url, ep_num_raw, expected_crc=None)
                 if not info_hash:
-                    print(f"  [⏳] Direct link failed/deleted. Triggering Fallback Chain...")
-                    actual_url = f"BATCH_SEARCH:{target_sheet}:Unknown"
+                    print(f"  [⏳] Direct link failed. Triggering Fallback...")
+                    actual_url = f"BATCH_SEARCH:{arc_name}:Unknown"
             
             # --- PHASE 3: The Ultimate Fallback Chain ---
             if actual_url.startswith("BATCH_SEARCH:"):
                 parts = actual_url.split(":")
                 arc_name = parts[1]
-                expected_crc = parts[2]
-                
-                # TIER 0: OFFICIAL WEBSITE BACKUP (Fresh Releases <= 7 Days)
-                website_url = resolve_from_website(arc_name, ep_num_raw)
-                if website_url:
-                    info_hash, torrent_filename = get_torrent_data(website_url, ep_num_raw, expected_crc)
-                    if info_hash: time.sleep(random.uniform(1, 2))
+                expected_crc = parts[2] if len(parts) > 2 else None
                 
                 # TIER 1: ALWAYS TRY THE OFFICIAL ARC BATCH FIRST
                 if not info_hash:
@@ -561,7 +578,7 @@ def main():
                         info_hash, torrent_filename = get_torrent_data(batch_url, ep_num_raw, expected_crc)
                 
                 # TIER 2: TRY PRECISE CRC SEARCH (If missing from batch)
-                if not info_hash and expected_crc not in ["Unknown", "00000000"]:
+                if not info_hash and expected_crc and expected_crc not in ["Unknown", "00000000"]:
                     print(f"  [🔎] Not in batch. Resolving CRC directly: {expected_crc}...")
                     crc_url = resolve_nyaa_url(expected_crc)
                     if crc_url:
@@ -581,20 +598,25 @@ def main():
                     continue
                 
             if info_hash:
+                # Slot is open! Add it.
                 url_length = episode_lengths.get(filename, {}).get(url, "")
                 streams.append({
                     "infoHash": info_hash, 
                     "filename": torrent_filename, 
                     "length": url_length
                 })
-                # Only sleep if we made a successful direct network hit
+                
+                # Lock the slot!
+                if is_extended_col: has_extended = True
+                else: has_standard = True
+                
                 if actual_url not in nyaa_html_cache:
                     time.sleep(random.uniform(0.5, 1.5))
         
         if streams:
             data = {"streams": streams}
-            with open(filepath, 'w') as f:
-                json.dump(data, f, indent=2)
+            with open(filepath, 'w', encoding='utf-8') as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
             
             tracker_data[filename] = nyaa_urls
             save_tracker(tracker_data)
