@@ -268,7 +268,7 @@ def main():
                 "overview": desc,
                 "season": 0, # Send unconfigured straight to Season 0
                 "episode": int(raw_ep),
-                "thumbnail": "https://image.tmdb.org/t/p/w500/iN5LKyvyWUWwqbjaQfKFXoo8mch.jpg"
+                "thumbnail": thumbnails_map.get(fallback_id, "https://image.tmdb.org/t/p/w500/iN5LKyvyWUWwqbjaQfKFXoo8mch.jpg"),
             }
             normal_videos.append(unconfigured_special)
 
