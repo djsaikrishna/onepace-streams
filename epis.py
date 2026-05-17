@@ -5,7 +5,8 @@ import os
 from io import StringIO
 
 # --- Configuration ---
-OUTPUT_JSON = 'meta/pp_onepacee.json'
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+OUTPUT_JSON = os.path.join(BASE_DIR, 'meta', 'pp_onepacee.json')
 BASE_META_URL = "https://fedew04.github.io/OnePaceStremio/meta/series/pp_onepace.json"
 
 SHEET_ID = "1M0Aa2p5x7NioaH9-u8FyHq6rH3t5s6Sccs8GoC6pHAM"
@@ -15,7 +16,8 @@ CSV_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&
 PROPERTIES_URL = "https://raw.githubusercontent.com/one-pace/one-pace-public-subtitles/main/main/title.properties"
 
 # --- Load Central Config ---
-with open('config.json', 'r', encoding='utf-8') as f:
+CONFIG_PATH = os.path.join(BASE_DIR, 'config.json')
+with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
     CONFIG = json.load(f)
 ARC_PREFIXES = CONFIG["ARC_MAP"]
 TOTAL_SEASONS = CONFIG["TOTAL_SEASONS"]
@@ -119,7 +121,8 @@ def main():
 
     print("4. Loading specials.json configuration...")
     try:
-        with open('meta/specials.json', 'r', encoding='utf-8') as f:
+        SPECIALS_PATH = os.path.join(BASE_DIR, 'meta', 'specials.json')
+        with open(SPECIALS_PATH, 'r', encoding='utf-8') as f:
             specials_config = json.load(f)
             
         specials_by_id = {}
@@ -131,7 +134,16 @@ def main():
     except FileNotFoundError:
         print("specials.json not found. Proceeding without special reordering.")
         specials_by_id = {}
-
+    
+    print("4.5. Loading thumbnails.json configuration...")
+    try:
+        THUMBNAILS_PATH = os.path.join(BASE_DIR, 'meta', 'thumbnails.json')
+        with open(THUMBNAILS_PATH, 'r', encoding='utf-8') as f:
+            thumbnails_map = json.load(f)
+    except FileNotFoundError:
+        print("thumbnails.json not found. Proceeding without custom thumbnails.")
+        thumbnails_map = {}
+        
     print("5. Applying transformations, titles, and injecting specials...")
     meta = data.get("meta", {})
     
@@ -184,7 +196,11 @@ def main():
             video["title"] = titles_map[vid_id]
 
         season_num = video.get("season")
-        if season_num and 1 <= season_num <= TOTAL_SEASONS:
+        
+        # --- NEW: Thumbnail Priority Logic (Normal Videos) ---
+        if vid_id in thumbnails_map:
+            video["thumbnail"] = thumbnails_map[vid_id]
+        elif season_num and 1 <= season_num <= TOTAL_SEASONS:
             s_padded = str(season_num).zfill(2)
             video["thumbnail"] = f"https://images.weserv.nl/?url=cdn.jsdelivr.net/gh/6ip/onepace-assets-prm@main/public/poster-s/poster-s{s_padded}.jpg&w=1280&h=720&fit=cover&a=center"
         else:
@@ -269,16 +285,19 @@ def main():
 
         spec_vid["season"] = target_season
 
-        # --- UPDATED: Thumbnail Priority Logic ---
-        if custom_thumb:
-            # Priority 1: Custom thumbnail from specials.json
+        # --- NEW: 4-Tier Thumbnail Priority Logic (Specials) ---
+        if vid_id in thumbnails_map:
+            # Priority 1: Custom thumbnail from thumbnails.json
+            spec_vid["thumbnail"] = thumbnails_map[vid_id]
+        elif custom_thumb:
+            # Priority 2: Custom thumbnail from specials.json
             spec_vid["thumbnail"] = custom_thumb
         elif 1 <= target_season <= TOTAL_SEASONS:
-            # Priority 2: Season-specific poster
+            # Priority 3: Season-specific poster
             s_padded = str(target_season).zfill(2)
             spec_vid["thumbnail"] = f"https://images.weserv.nl/?url=cdn.jsdelivr.net/gh/6ip/onepace-assets-prm@main/public/poster-s/poster-s{s_padded}.jpg&w=1280&h=720&fit=cover&a=center"
         else:
-            # Priority 3: Fallback TMDB background
+            # Priority 4: Fallback TMDB background
             spec_vid["thumbnail"] = "https://image.tmdb.org/t/p/w500/iN5LKyvyWUWwqbjaQfKFXoo8mch.jpg"
 
         # Find the max episode number currently existing in the target season
