@@ -3,12 +3,14 @@
     {
       "infoHash": "4d04775faae4513ad07eb10774e1335c64a6d810",
       "filename": "[Onigashima Paced][1012-1013] Onigashima 28 [1080p].mkv",
-      "length": "30:19"
+      "length": "30:19",
+      "fileIdx": 8
     },
-	{
+    {
       "infoHash": "e9bf8a8fd8a5e6fe942a498de852b3f5de13e1fb",
       "filename": "[Onigashima Paced][1012-1013] Onigashima Extended 28 [1080p].mkv",
-      "length": "37:00"
+      "length": "37:00",
+      "fileIdx": 1
     }
   ]
 }

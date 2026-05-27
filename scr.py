@@ -172,14 +172,15 @@ def get_torrent_data(nyaa_url, expected_ep_num, expected_crc=None, max_retries=3
                 if attempt < max_retries:
                     time.sleep(random.uniform(3, 6))
                 else:
-                    return None, None
+                    return None, None, None # <-- Updated return
 
     if not html_content:
-        return None, None
+        return None, None, None # <-- Updated return
 
     soup = BeautifulSoup(html_content, 'html.parser')
     info_hash = None
     torrent_filename = "Unknown Title"
+    file_idx = None # <-- NEW: Initialize as None
 
     magnet_tag = soup.find('a', href=re.compile(r'^magnet:\?xt=urn:btih:'))
     if magnet_tag:
@@ -210,25 +211,28 @@ def get_torrent_data(nyaa_url, expected_ep_num, expected_crc=None, max_retries=3
             
             # --- STRICT CRC MATCHING ---
             if expected_crc and expected_crc not in ["Unknown", "00000000"]:
-                for vf in video_files:
+                for idx, vf in enumerate(video_files):
                     if expected_crc.upper() in vf.upper() or expected_crc.lower() in vf.lower():
                         torrent_filename = vf
+                        # Set to None if it's the only file, otherwise save the index
+                        file_idx = None if len(video_files) == 1 else idx 
                         matched = True
                         break
                         
                 if not matched:
-                    # REJECT: We expected a precise CRC and this torrent doesn't have it!
-                    return None, None
+                    return None, None, None # <-- Updated return
             
             # --- FALLBACK: Episode Number Matching (Only if no CRC provided) ---
             if not matched:
                 if len(video_files) == 1:
                     torrent_filename = video_files[0]
+                    file_idx = None # <-- Null for single files
                     matched = True
                 else:
-                    for vf in video_files:
+                    for idx, vf in enumerate(video_files):
                         if re.search(rf'\b{ep_padded}\b|\b{expected_ep_num}\b', vf):
                             torrent_filename = vf
+                            file_idx = idx # <-- Save the index
                             matched = True
                             break
                             
@@ -237,13 +241,13 @@ def get_torrent_data(nyaa_url, expected_ep_num, expected_crc=None, max_retries=3
                 ep_index = int(expected_ep_num) - 1
                 if 0 <= ep_index < len(video_files):
                     torrent_filename = video_files[ep_index]
+                    file_idx = ep_index # <-- Save the index
                 else:
-                    # CRITICAL FIX: If out of bounds, do NOT guess the first file! Reject it!
-                    return None, None
+                    return None, None, None # <-- Updated return
 
     if info_hash:
-        return info_hash, torrent_filename
-    return None, None
+        return info_hash, torrent_filename, file_idx # <-- Updated return
+    return None, None, None # <-- Updated return
 
 # --- NEW: Global cache to track previous episode numbers ---
 LAST_EPISODE_CACHE = {}
@@ -497,15 +501,13 @@ def main():
         has_extended = False
 
         # --- PHASE 0: OFFICIAL WEBSITE OVERRIDE ---
-        # We already fetched website_streams above, so we just loop through it!
         for web_stream in website_streams:
-            web_info_hash, web_filename = get_torrent_data(web_stream["url"], ep_num_raw, expected_crc=None)
+            web_info_hash, web_filename, web_file_idx = get_torrent_data(web_stream["url"], ep_num_raw, expected_crc=None)
             if web_info_hash:
                 is_ext = web_stream["is_extended"]
                 ext_label = "Extended" if is_ext else "Standard"
                 print(f"  [⭐] Found fresh {ext_label} release on Website: {web_filename}")
                 
-                # Match the length based on which cut it is
                 assigned_len = ""
                 if is_ext and len(spreadsheet_lengths) > 1:
                     assigned_len = spreadsheet_lengths[1]
@@ -515,7 +517,8 @@ def main():
                 streams.append({
                     "infoHash": web_info_hash, 
                     "filename": web_filename, 
-                    "length": assigned_len
+                    "length": assigned_len,
+                    "fileIdx": web_file_idx  # <-- Added here!
                 })
                 
                 # Lock the slot!
@@ -535,7 +538,7 @@ def main():
                 print("  [⚡] Skipping outdated Spreadsheet Standard Cut (already got fresh one).")
                 continue
 
-            info_hash, torrent_filename = None, None
+            info_hash, torrent_filename, file_idx = None, None, None # <-- Add file_idx
             actual_url = url
             expected_crc = None
             
@@ -554,7 +557,7 @@ def main():
             
             # --- PHASE 2: Test Direct URLs (If it's not a batch search) ---
             if not actual_url.startswith("BATCH_SEARCH:"):
-                info_hash, torrent_filename = get_torrent_data(actual_url, ep_num_raw, expected_crc=None)
+                info_hash, torrent_filename, file_idx = get_torrent_data(actual_url, ep_num_raw, expected_crc=None)
                 if not info_hash:
                     print(f"  [⏳] Direct link failed. Triggering Fallback...")
                     actual_url = f"BATCH_SEARCH:{arc_name}:Unknown"
@@ -575,14 +578,14 @@ def main():
                             time.sleep(random.uniform(1, 2))
                     
                     if batch_url:
-                        info_hash, torrent_filename = get_torrent_data(batch_url, ep_num_raw, expected_crc)
+                        info_hash, torrent_filename, file_idx = get_torrent_data(batch_url, ep_num_raw, expected_crc)
                 
                 # TIER 2: TRY PRECISE CRC SEARCH (If missing from batch)
                 if not info_hash and expected_crc and expected_crc not in ["Unknown", "00000000"]:
                     print(f"  [🔎] Not in batch. Resolving CRC directly: {expected_crc}...")
                     crc_url = resolve_nyaa_url(expected_crc)
                     if crc_url:
-                        info_hash, torrent_filename = get_torrent_data(crc_url, ep_num_raw, expected_crc)
+                        info_hash, torrent_filename, file_idx = get_torrent_data(crc_url, ep_num_raw, expected_crc)
                         if info_hash: time.sleep(random.uniform(1, 2))
                             
                 # TIER 3: SINGLE EPISODE SEARCH (Final Fallback)
@@ -590,7 +593,7 @@ def main():
                     print(f"  [⏳] CRC missed. Hunting for Single Episode: {arc_name} {ep_num_raw}...")
                     sing_url = resolve_single_episode(arc_name, ep_num_raw)
                     if sing_url:
-                        info_hash, torrent_filename = get_torrent_data(sing_url, ep_num_raw, None)
+                        info_hash, torrent_filename, file_idx = get_torrent_data(sing_url, ep_num_raw, None)
                         if info_hash: time.sleep(random.uniform(1, 2))
                 
                 if not info_hash:
@@ -603,7 +606,8 @@ def main():
                 streams.append({
                     "infoHash": info_hash, 
                     "filename": torrent_filename, 
-                    "length": url_length
+                    "length": url_length,
+                    "fileIdx": file_idx # <-- Added here!
                 })
                 
                 # Lock the slot!
