@@ -7,6 +7,8 @@ import requests
 import openpyxl
 import datetime
 from bs4 import BeautifulSoup
+import hashlib
+import bencodepy
 
 SHEET_EXPORT_URL = "https://docs.google.com/spreadsheets/d/1HQRMJgu_zArp-sLnvFMDzOyjdsht87eFLECxMK858lA/export?format=xlsx"
 LOCAL_EXCEL_FILE = "one_pace.xlsx"
@@ -155,99 +157,111 @@ def resolve_single_episode(arc_name, ep_num, max_retries=2):
 
 def get_torrent_data(nyaa_url, expected_ep_num, expected_crc=None, max_retries=3):
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-    html_content = None
     
-    if nyaa_url in nyaa_html_cache:
-        html_content = nyaa_html_cache[nyaa_url]
+    # 1. Extract Nyaa ID from URL and format the .torrent download link
+    match = re.search(r'(?:/view/|download/)(\d+)', nyaa_url)
+    if not match:
+        return None, None, None
+    
+    nyaa_id = match.group(1)
+    download_url = f"https://nyaa.si/download/{nyaa_id}.torrent"
+
+    torrent_bytes = None
+    
+    # 2. Download and cache the .torrent file (Much faster than HTML!)
+    if download_url in nyaa_html_cache:
+        torrent_bytes = nyaa_html_cache[download_url]
     else:
         for attempt in range(1, max_retries + 1):
             try:
-                response = requests.get(nyaa_url, headers=headers, timeout=15)
+                response = requests.get(download_url, headers=headers, timeout=15)
                 response.raise_for_status()
-                html_content = response.text
-                nyaa_html_cache[nyaa_url] = html_content
+                torrent_bytes = response.content
+                nyaa_html_cache[download_url] = torrent_bytes
                 break
             except requests.exceptions.RequestException as e:
-                print(f"  [!] Nyaa timeout on attempt {attempt}/{max_retries}. Error: {e}")
+                print(f"  [!] Torrent download timeout on attempt {attempt}/{max_retries}. Error: {e}")
                 if attempt < max_retries:
                     time.sleep(random.uniform(3, 6))
                 else:
-                    return None, None, None # <-- Updated return
+                    return None, None, None
 
-    if not html_content:
-        return None, None, None # <-- Updated return
+    if not torrent_bytes:
+        return None, None, None
 
-    soup = BeautifulSoup(html_content, 'html.parser')
-    info_hash = None
+    # 3. Parse Bencode and generate the InfoHash directly from the file
+    try:
+        torrent_data = bencodepy.decode(torrent_bytes)
+        info = torrent_data[b'info']
+        info_hash = hashlib.sha1(bencodepy.encode(info)).hexdigest().lower()
+    except Exception as e:
+        print(f"  [!] Failed to parse torrent file: {e}")
+        return None, None, None
+
     torrent_filename = "Unknown Title"
-    file_idx = None # <-- NEW: Initialize as None
+    file_idx = None
+    ep_padded = str(expected_ep_num).zfill(2)
 
-    magnet_tag = soup.find('a', href=re.compile(r'^magnet:\?xt=urn:btih:'))
-    if magnet_tag:
-        match = re.search(r'urn:btih:([a-zA-Z0-9]{40})', magnet_tag['href'])
-        if match:
-            info_hash = match.group(1).lower()
+    # 4. Extract video files AND their TRUE index mapped to the .torrent
+    video_files = [] # Stored as tuples: (true_index, filename)
+    
+    if b'files' in info: # Multi-file torrent
+        for idx, f in enumerate(info[b'files']):
+            # The filename is the last element in the path list
+            fname = f[b'path'][-1].decode('utf-8', errors='ignore')
+            if ".mkv" in fname.lower() or ".mp4" in fname.lower():
+                video_files.append((idx, fname))
+    else: # Single-file torrent
+        fname = info[b'name'].decode('utf-8', errors='ignore')
+        if ".mkv" in fname.lower() or ".mp4" in fname.lower():
+            video_files.append((0, fname))
 
-    title_tag = soup.find('title')
-    if title_tag:
-        raw_title = title_tag.text
-        torrent_filename = raw_title.replace(" :: Nyaa", "").strip()
+    if not video_files:
+        return None, None, None
 
-    file_list_div = soup.find('div', class_=re.compile('torrent-file-list'))
-    if file_list_div:
-        ep_padded = str(expected_ep_num).zfill(2)
-        lines = file_list_div.get_text(separator='\n').split('\n')
-        
-        video_files = []
-        for line in lines:
-            text = line.strip()
-            if ".mkv" in text or ".mp4" in text:
-                clean_file = re.sub(r'\s*\([^)]*\)$', '', text).strip()
-                video_files.append(clean_file)
-        
-        if video_files:
-            video_files.sort()
-            matched = False
-            
-            # --- STRICT CRC MATCHING ---
-            if expected_crc and expected_crc not in ["Unknown", "00000000"]:
-                for idx, vf in enumerate(video_files):
-                    if expected_crc.upper() in vf.upper() or expected_crc.lower() in vf.lower():
-                        torrent_filename = vf
-                        # Set to None if it's the only file, otherwise save the index
-                        file_idx = None if len(video_files) == 1 else idx 
-                        matched = True
-                        break
-                        
-                if not matched:
-                    return None, None, None # <-- Updated return
-            
-            # --- FALLBACK: Episode Number Matching (Only if no CRC provided) ---
-            if not matched:
-                if len(video_files) == 1:
-                    torrent_filename = video_files[0]
-                    file_idx = None # <-- Null for single files
+    matched = False
+
+    # --- STRICT CRC MATCHING ---
+    if expected_crc and expected_crc not in ["Unknown", "00000000"]:
+        for true_idx, vf in video_files:
+            if expected_crc.upper() in vf.upper() or expected_crc.lower() in vf.lower():
+                torrent_filename = vf
+                file_idx = None if len(video_files) == 1 else true_idx 
+                matched = True
+                break
+
+        if not matched:
+            return None, None, None
+
+    # --- FALLBACK: Episode Number Matching (Only if no CRC provided) ---
+    if not matched:
+        if len(video_files) == 1:
+            torrent_filename = video_files[0][1]
+            file_idx = None
+            matched = True
+        else:
+            for true_idx, vf in video_files:
+                if re.search(rf'\b{ep_padded}\b|\b{expected_ep_num}\b', vf):
+                    torrent_filename = vf
+                    file_idx = true_idx
                     matched = True
-                else:
-                    for idx, vf in enumerate(video_files):
-                        if re.search(rf'\b{ep_padded}\b|\b{expected_ep_num}\b', vf):
-                            torrent_filename = vf
-                            file_idx = idx # <-- Save the index
-                            matched = True
-                            break
-                            
-            # --- FINAL FALLBACK: Index ---
-            if not matched:
-                ep_index = int(expected_ep_num) - 1
-                if 0 <= ep_index < len(video_files):
-                    torrent_filename = video_files[ep_index]
-                    file_idx = ep_index # <-- Save the index
-                else:
-                    return None, None, None # <-- Updated return
+                    break
 
-    if info_hash:
-        return info_hash, torrent_filename, file_idx # <-- Updated return
-    return None, None, None # <-- Updated return
+    # --- FINAL FALLBACK: Index ---
+    if not matched:
+        # We sort alphabetically ONLY for guessing the episode, 
+        # BUT we keep the true_idx attached!
+        sorted_by_name = sorted(video_files, key=lambda x: x[1])
+        ep_index = int(expected_ep_num) - 1
+        
+        if 0 <= ep_index < len(sorted_by_name):
+            true_idx, vf = sorted_by_name[ep_index]
+            torrent_filename = vf
+            file_idx = true_idx
+        else:
+            return None, None, None
+
+    return info_hash, torrent_filename, file_idx
 
 # --- NEW: Global cache to track previous episode numbers ---
 LAST_EPISODE_CACHE = {}
@@ -614,8 +628,12 @@ def main():
                 if is_extended_col: has_extended = True
                 else: has_standard = True
                 
-                if actual_url not in nyaa_html_cache:
-                    time.sleep(random.uniform(0.5, 1.5))
+                # Check if the .torrent download URL is in the cache before sleeping
+                match = re.search(r'(?:/view/|download/)(\d+)', actual_url)
+                if match:
+                    dl_url = f"https://nyaa.si/download/{match.group(1)}.torrent"
+                    if dl_url not in nyaa_html_cache:
+                        time.sleep(random.uniform(0.5, 1.5))
         
         if streams:
             data = {"streams": streams}
