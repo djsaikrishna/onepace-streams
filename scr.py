@@ -348,13 +348,32 @@ def resolve_from_website(arc_name, ep_num_raw, max_retries=2):
             continue
         
         time_tag = ep.find('time')
-        if not time_tag or not time_tag.has_attr('datetime'): continue
+        if not time_tag: continue
         
-        try:
-            release_date = datetime.datetime.strptime(time_tag['datetime'][:10], "%Y-%m-%d").date()
-            days_diff = (datetime.datetime.now().date() - release_date).days
-            if days_diff > 7 or days_diff < 0: continue 
-        except: continue
+        release_date = None
+        
+        # 1. Try parsing the clean 'title' attribute (Format: 5/31/2026)
+        if time_tag.has_attr('title'):
+            try:
+                release_date = datetime.datetime.strptime(time_tag['title'], "%m/%d/%Y").date()
+            except ValueError: pass
+            
+        # 2. If title fails, try the new 'datetime' format (Format: Sun May 31 2026)
+        if not release_date and time_tag.has_attr('datetime'):
+            try:
+                release_date = datetime.datetime.strptime(time_tag['datetime'][:15], "%a %b %d %Y").date()
+            except ValueError: 
+                # 3. Fallback to your original logic just in case (Format: 2026-05-31)
+                try:
+                    release_date = datetime.datetime.strptime(time_tag['datetime'][:10], "%Y-%m-%d").date()
+                except ValueError: pass
+
+        if not release_date:
+            print(f"  [!] Warning: Could not parse release date for website episode: '{title_text}'")
+            continue
+            
+        days_diff = (datetime.datetime.now().date() - release_date).days
+        if days_diff > 7 or days_diff < 0: continue
         
         # --- Check the <small> tag for "Extended" ---
         small_tag = title_tag.find('small')
